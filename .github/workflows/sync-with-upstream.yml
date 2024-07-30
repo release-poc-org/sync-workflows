@@ -2,10 +2,18 @@ name: Syncs the repo with the upstream
 on:
   workflow_call:
     secrets:
-      upstream_read_token:
-        required: true
-      fork_read_write_token:
-        required: true
+      upstream_reader_app_id:
+        required: false
+      upstream_reader_app_key:
+        required: false
+      upstream_owner:
+        required: false
+      fork_writer_app_id:
+        required: false
+      fork_writer_app_key:
+        required: false      
+      fork_owner:
+        required: false
 
 concurrency:
   group: ${{ github.repository }}-${{ github.workflow }}
@@ -34,11 +42,53 @@ jobs:
         if: needs.job_check_env_context.outputs.workflow_enabled == 'true'
         runs-on: ubuntu-latest
         steps:
+            - name: Generate Upstream Reader Token from app (if any)
+              id: gen_upstream_reader_token
+              if: secrets.upstream_reader_app_id != ''
+              uses: actions/create-github-app-token@v1
+              with:
+                  app-id: ${{ secrets.upstream_reader_app_id }}
+                  private-key: ${{ secrets.upstream_reader_app_key }}
+                  owner: ${{ secrets.upstream_owner }}
+
+            - name: Select Upstream Reader Token
+              id: get_upstream_reader_token
+              env:
+                APP_TOKEN: ${{ steps.gen_upstream_reader_token.outputs.token }}
+                GH_TOKEN: ${{ github.token }}
+              run: |
+                if [[ -z "$APP_TOKEN" ]]; then
+                  echo "token=$GH_TOKEN" >> "$GITHUB_OUTPUT"
+                else
+                  echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
+                fi
+
+            - name: Generate Fork Writer Token from app (if any)
+              id: gen_fork_writer_token
+              if: secrets.fork_writer_app_id != ''
+              uses: actions/create-github-app-token@v1
+              with:
+                  app-id: ${{ secrets.fork_writer_app_id }}
+                  private-key: ${{ secrets.fork_writer_app_key }}
+                  owner: ${{ secrets.fork_owner }}
+
+            - name: Select Fork Writer Token
+              id: get_fork_writer_token
+              env:
+                APP_TOKEN: ${{ steps.gen_fork_writer_token.outputs.token }}
+                GH_TOKEN: ${{ github.token }}
+              run: |
+                if [[ -z "$APP_TOKEN" ]]; then
+                  echo "token=$GH_TOKEN" >> "$GITHUB_OUTPUT"
+                else
+                  echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
+                fi
+
             - name: Identify repos parameters
               id: get_repo_params
               env:
                 FORKED_REPO: ${{ github.repository }}
-                GH_TOKEN: ${{ secrets.fork_read_write_token }}
+                GH_TOKEN: ${{ steps.get_fork_writer_token.outputs.token }}
               run: |
                 upstream_name=$(gh api repos/$FORKED_REPO  | jq -r ".source.full_name")
                 default_branch=$(gh api repos/$FORKED_REPO | jq -r ".default_branch")
@@ -50,8 +100,8 @@ jobs:
             - name: Identifying what to do with the branches
               id: identifying_branches_actions
               env:
-                UPSTREAM_READ_TOKEN: ${{ secrets.upstream_read_token }}
-                FORK_READ_WRITE_TOKEN: ${{ secrets.fork_read_write_token }}
+                UPSTREAM_READ_TOKEN: ${{ steps.get_upstream_reader_token.outputs.token }}
+                FORK_READ_WRITE_TOKEN: ${{ steps.get_fork_writer_token.outputs.token }}
                 FORKED_REPO: ${{ github.repository }}
                 UPSTREAM_REPO: ${{ steps.get_repo_params.outputs.upstream_name }}
                 BRANCHES_TO_SYNC_EGREP_REGEX: ${{ vars.BRANCHES_TO_SYNC_EGREP_REGEX }}
@@ -94,7 +144,7 @@ jobs:
             - name: Sync the Main/Master branch always first and separately
               id: sync_master_brach
               env:
-                GH_TOKEN: ${{ secrets.fork_read_write_token }}
+                GH_TOKEN: ${{ steps.get_fork_writer_token.outputs.token }}
                 FORKED_REPO: ${{ github.repository }}
                 MAIN_BRANCH: ${{ steps.get_repo_params.outputs.default_branch }}
               run: gh repo sync $FORKED_REPO -b $MAIN_BRANCH
@@ -102,7 +152,7 @@ jobs:
             - name: Clean the branches in the fork, not exist in the source now
               id: clean_fork_branches
               env:
-                GH_TOKEN: ${{ secrets.fork_read_write_token }}
+                GH_TOKEN: ${{ steps.get_fork_writer_token.outputs.token }}
                 FORKED_REPO: ${{ github.repository }}
                 UPSTREAM_REPO: ${{ steps.get_repo_params.outputs.upstream_name }}
               run: |
@@ -119,8 +169,8 @@ jobs:
             - name: Create missing branches in the fork
               id: create_missing_fork_branches
               env:
-                UPSTREAM_READ_TOKEN: ${{ secrets.upstream_read_token }}
-                FORK_READ_WRITE_TOKEN: ${{ secrets.fork_read_write_token }}
+                UPSTREAM_READ_TOKEN: ${{ steps.get_upstream_reader_token.outputs.token }}
+                FORK_READ_WRITE_TOKEN: ${{ steps.get_fork_writer_token.outputs.token }}
                 FORKED_REPO: ${{ github.repository }}
                 UPSTREAM_REPO: ${{ steps.get_repo_params.outputs.upstream_name }}
               run: |
@@ -154,8 +204,8 @@ jobs:
             - name: Sync all the branches in the fork that match the sync settings
               id: sync_all_fork_branches
               env:
-                UPSTREAM_READ_TOKEN: ${{ secrets.upstream_read_token }}
-                FORK_READ_WRITE_TOKEN: ${{ secrets.fork_read_write_token }}
+                UPSTREAM_READ_TOKEN: ${{ steps.get_upstream_reader_token.outputs.token }}
+                FORK_READ_WRITE_TOKEN: ${{ steps.get_fork_writer_token.outputs.token }}
                 FORKED_REPO: ${{ github.repository }}
                 UPSTREAM_REPO: ${{ steps.get_repo_params.outputs.upstream_name }}
               run: |
@@ -196,8 +246,8 @@ jobs:
             - name: Identify what to do with the tags
               id: identify_tags_actions
               env:
-                UPSTREAM_READ_TOKEN: ${{ secrets.upstream_read_token }}
-                FORK_READ_WRITE_TOKEN: ${{ secrets.fork_read_write_token }}
+                UPSTREAM_READ_TOKEN: ${{ steps.get_upstream_reader_token.outputs.token }}
+                FORK_READ_WRITE_TOKEN: ${{ steps.get_fork_writer_token.outputs.token }}
                 FORKED_REPO: ${{ github.repository }}
                 UPSTREAM_REPO: ${{ steps.get_repo_params.outputs.upstream_name }}
               run: |
@@ -234,7 +284,7 @@ jobs:
             - name: Remove tags in the fork, missing in the source
               id: clean_fork_tags
               env:
-                GH_TOKEN: ${{ secrets.fork_read_write_token }}
+                GH_TOKEN: ${{ steps.get_fork_writer_token.outputs.token }}
                 FORKED_REPO: ${{ github.repository }}
                 UPSTREAM_REPO: ${{ steps.get_repo_params.outputs.upstream_name }}
               run: |
@@ -253,7 +303,7 @@ jobs:
             - name: Create missing tags in the fork
               id: create_missing_fork_tags
               env:
-                GH_TOKEN: ${{ secrets.fork_read_write_token }}
+                GH_TOKEN: ${{ steps.get_fork_writer_token.outputs.token }}
                 FORKED_REPO: ${{ github.repository }}
                 UPSTREAM_REPO: ${{ steps.get_repo_params.outputs.upstream_name }}
               run: |
