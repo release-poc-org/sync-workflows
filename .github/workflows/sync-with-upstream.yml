@@ -1,19 +1,24 @@
 name: Syncs the repo with the upstream
 on:
   workflow_call:
-    secrets:
+    inputs:
       upstream_reader_app_id:
         required: false
-      upstream_reader_app_key:
-        required: false
+        type: number
       upstream_owner:
         required: false
+        type: string
       fork_writer_app_id:
+        required: false
+        type: number
+      fork_owner:
+        required: false
+        type: string
+    secrets:
+      upstream_reader_app_key:
         required: false
       fork_writer_app_key:
         required: false      
-      fork_owner:
-        required: false
 
 concurrency:
   group: ${{ github.repository }}-${{ github.workflow }}
@@ -44,12 +49,12 @@ jobs:
         steps:
             - name: Generate Upstream Reader Token from app (if any)
               id: gen_upstream_reader_token
-              if: secrets.upstream_reader_app_id != ''
+              if: inputs.upstream_reader_app_id != ''
               uses: actions/create-github-app-token@v1
               with:
-                  app-id: ${{ secrets.upstream_reader_app_id }}
+                  app-id: ${{ inputs.upstream_reader_app_id }}
                   private-key: ${{ secrets.upstream_reader_app_key }}
-                  owner: ${{ secrets.upstream_owner }}
+                  owner: ${{ inputs.upstream_owner }}
 
             - name: Select Upstream Reader Token
               id: get_upstream_reader_token
@@ -65,12 +70,12 @@ jobs:
 
             - name: Generate Fork Writer Token from app (if any)
               id: gen_fork_writer_token
-              if: secrets.fork_writer_app_id != ''
+              if: inputs.fork_writer_app_id != ''
               uses: actions/create-github-app-token@v1
               with:
-                  app-id: ${{ secrets.fork_writer_app_id }}
+                  app-id: ${{ inputs.fork_writer_app_id }}
                   private-key: ${{ secrets.fork_writer_app_key }}
-                  owner: ${{ secrets.fork_owner }}
+                  owner: ${{ inputs.fork_owner }}
 
             - name: Select Fork Writer Token
               id: get_fork_writer_token
