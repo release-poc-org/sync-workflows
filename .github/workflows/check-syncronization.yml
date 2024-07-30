@@ -57,7 +57,7 @@ jobs:
     needs: job_check_env_context
     if: needs.job_check_env_context.outputs.workflow_enabled == 'true'
     outputs:
-      refs_synced: ${{ steps.check_if_the_branch_synced.outputs.refs_synced }}
+      refs_synced: ${{ steps.check_if_the_refs_synced.outputs.refs_synced }}
     steps: 
       - name: Generate Upstream Reader Token from app (if any)
         id: gen_upstream_reader_token
