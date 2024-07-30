@@ -1,11 +1,24 @@
 name: Syncronization checks for the release workflows
 on:
   workflow_call:
+    inputs:
+      upstream_reader_app_id:
+        required: false
+        type: string
+      upstream_owner:
+        required: false
+        type: string
+      fork_reader_app_id:
+        required: false
+        type: string
+      fork_owner:
+        required: false
+        type: string
     secrets:
-      upstream_read_token:
-        required: true
-      fork_read_token:
-        required: true
+      upstream_reader_app_key:
+        required: false
+      fork_reader_app_key:
+        required: false   
     outputs:
       checks_passed:
         description: Equal to 'true' if 1. the upstream/forks branches are synced, 2. caller is the fork
@@ -46,11 +59,53 @@ jobs:
     outputs:
       refs_synced: ${{ steps.check_if_the_branch_synced.outputs.refs_synced }}
     steps: 
+      - name: Generate Upstream Reader Token from app (if any)
+        id: gen_upstream_reader_token
+        if: inputs.upstream_reader_app_id != ''
+        uses: actions/create-github-app-token@v1
+        with:
+            app-id: ${{ inputs.upstream_reader_app_id }}
+            private-key: ${{ secrets.upstream_reader_app_key }}
+            owner: ${{ inputs.upstream_owner }}
+
+      - name: Select Upstream Reader Token
+        id: get_upstream_reader_token
+        env:
+          APP_TOKEN: ${{ steps.gen_upstream_reader_token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -z "$APP_TOKEN" ]]; then
+            echo "token=$GH_TOKEN" >> "$GITHUB_OUTPUT"
+          else
+            echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate Fork Reader Token from app (if any)
+        id: gen_fork_reader_token
+        if: inputs.fork_reader_app_id != ''
+        uses: actions/create-github-app-token@v1
+        with:
+            app-id: ${{ inputs.fork_reader_app_id }}
+            private-key: ${{ secrets.fork_reader_app_key }}
+            owner: ${{ inputs.fork_owner }}
+
+      - name: Select Fork Reader Token
+        id: get_fork_reader_token
+        env:
+          APP_TOKEN: ${{ steps.gen_fork_writer_token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -z "$APP_TOKEN" ]]; then
+            echo "token=$GH_TOKEN" >> "$GITHUB_OUTPUT"
+          else
+            echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Identify repos parameters
         id: get_repo_params
         env:
           FORKED_REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.fork_read_token }}
+          GH_TOKEN: ${{ steps.get_fork_reader_token.outputs.token }}
         run: |
           upstream_name=$(gh api repos/$FORKED_REPO  | jq -r ".source.full_name")
           echo "Identified upstream name: $upstream_name"
@@ -59,8 +114,8 @@ jobs:
       - name: Check if the target ref is properly synced
         id: check_if_the_refs_synced
         env:
-          UPSTREAM_READ_TOKEN: ${{ secrets.upstream_read_token }}
-          FORK_READ_TOKEN: ${{ secrets.fork_read_token }}
+          UPSTREAM_READ_TOKEN: ${{ steps.get_upstream_reader_token.outputs.token }}
+          FORK_READ_TOKEN: ${{ steps.get_fork_reader_token.outputs.token }}
           FORKED_REPO: ${{ github.repository }}
           UPSTREAM_REPO: ${{ steps.get_repo_params.outputs.upstream_name }}
           REF: ${{ github.ref }}
