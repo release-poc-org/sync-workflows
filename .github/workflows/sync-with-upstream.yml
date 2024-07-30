@@ -4,13 +4,13 @@ on:
     inputs:
       upstream_reader_app_id:
         required: false
-        type: number
+        type: string
       upstream_owner:
         required: false
         type: string
       fork_writer_app_id:
         required: false
-        type: number
+        type: string
       fork_owner:
         required: false
         type: string
